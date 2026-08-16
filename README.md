@@ -20,6 +20,8 @@ Network.framework/NSURLSession socket path.
 
 - One dylib: `libproxychains_livecontainer.dylib`
 - No Substrate / jailbreak dependency
+- Uses dyld interposing **and** fishhook runtime rebinding, so it also works when
+  LiveContainer loads the dylib with `dlopen()` after the app is already running
 - Hooks:
   - `connect`
   - `connectx` (when built with `MONTEREY_HOOKING`, the default)
@@ -105,8 +107,12 @@ The dylib searches for the config in this order:
 4. `$HOME/config/settings/proxychains.conf`
 5. `$HOME/Documents/proxychains.conf`
 6. `$HOME/Library/Preferences/proxychains.conf`
-7. same directory as the dylib
-8. `SYSCONFDIR` and `/etc`
+7. `$HOME/Documents/config/proxychanins/proxychains.conf`
+8. `$HOME/Documents/config/proxychains/proxychains.conf`
+9. same directory as the dylib
+10. `../config/proxychanins/proxychains.conf` relative to the dylib
+11. `../config/proxychains/proxychains.conf` relative to the dylib
+12. `SYSCONFDIR` and `/etc`
 
 If no config is found, the dylib logs a message and passes traffic through
 unmodified instead of crashing the app.
@@ -116,8 +122,9 @@ unmodified instead of crashing the app.
 - The proxychains-ng library is compiled with `-DMONTEREY_HOOKING`.
 - Its replacement functions (`pxcng_connect`, `pxcng_getaddrinfo`, etc.) are
   registered in `__DATA,__interpose`.
-- LiveContainer loads the dylib before hosted app code runs, so dyld interposes
-  those libSystem symbols process-wide.
+- In addition, fishhook rebinds the same symbols at runtime, which covers the
+  LiveContainer case where the dylib is `dlopen()`ed after the app is already
+  running.
 - `connect()` and `connectx()` calls are redirected through proxychains' core,
   which opens a TCP connection to the HTTP proxy and performs an HTTP CONNECT
   tunnel to the real destination.

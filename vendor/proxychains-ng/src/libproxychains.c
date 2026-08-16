@@ -40,6 +40,7 @@
 #include "core.h"
 #include "common.h"
 #include "rdns.h"
+#include "fishhook.h"
 
 #undef 		satosin
 #define     satosin(x)      ((struct sockaddr_in *) &(x))
@@ -111,6 +112,7 @@ static void* load_sym(char* symname, void* proxyfunc, int is_mandatory) {
 const char *proxychains_get_version(void);
 
 static void setup_hooks(void);
+static void setup_runtime_hooks(void);
 
 typedef struct {
 	unsigned int first, last, flags;
@@ -151,6 +153,7 @@ static void do_init(void) {
 	}
 
 	setup_hooks();
+	setup_runtime_hooks();
 
 	/* read the config file */
 	get_chain_data(proxychains_pd, &proxychains_proxy_count, &proxychains_ct);
@@ -970,6 +973,27 @@ static void setup_hooks(void) {
 	SETUP_SYM_OPTIONAL(close_range);
 }
 
+#ifdef MONTEREY_HOOKING
+static void setup_runtime_hooks(void) {
+	struct rebinding rebindings[] = {
+		{"connect", (void*)pxcng_connect, (void**)&true_connect},
+		{"connectx", (void*)pxcng_connectx, (void**)&true_connectx},
+		{"sendto", (void*)pxcng_sendto, (void**)&true_sendto},
+		{"gethostbyname", (void*)pxcng_gethostbyname, (void**)&true_gethostbyname},
+		{"getaddrinfo", (void*)pxcng_getaddrinfo, (void**)&true_getaddrinfo},
+		{"freeaddrinfo", (void*)pxcng_freeaddrinfo, (void**)&true_freeaddrinfo},
+		{"gethostbyaddr", (void*)pxcng_gethostbyaddr, (void**)&true_gethostbyaddr},
+		{"getnameinfo", (void*)pxcng_getnameinfo, (void**)&true_getnameinfo},
+		{"close", (void*)pxcng_close, (void**)&true_close},
+	};
+	if(rebind_symbols(rebindings, sizeof(rebindings)/sizeof(rebindings[0])) != 0)
+		proxychains_write_log(LOG_PREFIX "fishhook rebind_symbols failed\n");
+	else
+		proxychains_write_log(LOG_PREFIX "fishhook runtime rebinding installed\n");
+}
+#else
+static void setup_runtime_hooks(void) {}
+#endif
 #ifdef MONTEREY_HOOKING
 
 #define DYLD_INTERPOSE(_replacement,_replacee) \

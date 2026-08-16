@@ -52,6 +52,11 @@ git push origin v0.1.0
    - `$HOME/Library/Preferences/proxychains.conf`
    - `$HOME/.proxychains/proxychains.conf`
    - `$HOME/config/settings/proxychains.conf`
+   - `$HOME/Documents/config/proxychanins/proxychains.conf`
+   - `$HOME/Documents/config/proxychains/proxychains.conf`
+   - dylib 同目录
+   - dylib 的 `../config/proxychanins/proxychains.conf`
+   - dylib 的 `../config/proxychains/proxychains.conf`
    - `/etc/proxychains.conf`
 3. 编辑 `proxychains.conf`，把代理改成你的 HTTP 代理：
 
@@ -85,6 +90,7 @@ $HOME/Documents/proxychains.log
 ## 说明
 
 - 使用 `-DMONTEREY_HOOKING` 编译，无需 Substrate。
+- 同时使用 dyld interpose 和 fishhook 运行时重绑定；即使 LiveContainer 是在 App 启动后才 `dlopen()` 注入 dylib，也能尽量 hook 到网络函数。
 - 找不到配置时不会让 App 崩溃，而是直连放行。
 - 默认排除 loopback，避免代理自身和 LiveContainer 内部被递归代理。
 - `connectx` 为尽力而为：带非 NULL 连接 ID 的调用会直接放行，避免破坏 Apple Network.framework 状态。

@@ -1,6 +1,6 @@
 diff -ruN '--exclude=.git' ../proxychains-ng/src/common.c vendor/proxychains-ng/src/common.c
 --- a/src/common.c	2026-08-16 20:47:12.798400000 +0800
-+++ b/src/common.c	2026-08-16 21:08:54.571116300 +0800
++++ b/src/common.c	2026-08-16 22:18:33.761298600 +0800
 @@ -2,6 +2,8 @@
  #include <stdlib.h>
  #include <unistd.h>
@@ -18,7 +18,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/common.c vendor/proxychains-ng/
  	// top priority: user defined path
  	char *path = default_path;
  	if(check_path(path))
-@@ -94,24 +97,57 @@
+@@ -94,24 +97,82 @@
  
  	// priority 2; proxychains conf in actual dir
  	path = getcwd(buf, sizeof(buf));
@@ -71,9 +71,21 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/common.c vendor/proxychains-ng/
 +		path = pbuf;
 +		if(check_path(path))
 +			goto have;
++
++		// priority 3e: LiveContainer Documents/config/proxychanins
++		snprintf(pbuf, bufsize, "%s/Documents/config/proxychanins/%s", home, PROXYCHAINS_CONF_FILE);
++		path = pbuf;
++		if(check_path(path))
++			goto have;
++
++		// priority 3f: LiveContainer Documents/config/proxychains
++		snprintf(pbuf, bufsize, "%s/Documents/config/proxychains/%s", home, PROXYCHAINS_CONF_FILE);
++		path = pbuf;
++		if(check_path(path))
++			goto have;
 +	}
 +
-+	// priority 3e: next to this dylib
++	// priority 3e: next to this dylib, plus relative Documents/config paths
 +	{
 +		Dl_info dli;
 +		if(dladdr((void*)&get_config_path, &dli) && dli.dli_fname && dli.dli_fname[0]) {
@@ -81,8 +93,21 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/common.c vendor/proxychains-ng/
 +			char *slash = strrchr(pbuf, '/');
 +			if(slash) {
 +				size_t dir_len = (size_t)(slash - pbuf);
++				*slash = 0;
 +				if(dir_len + sizeof("/" PROXYCHAINS_CONF_FILE) <= bufsize) {
-+					strcpy(slash + 1, PROXYCHAINS_CONF_FILE);
++					snprintf(pbuf + dir_len, bufsize - dir_len, "/%s", PROXYCHAINS_CONF_FILE);
++					path = pbuf;
++					if(check_path(path))
++						goto have;
++				}
++				if(dir_len + sizeof("/../config/proxychanins/" PROXYCHAINS_CONF_FILE) <= bufsize) {
++					snprintf(pbuf + dir_len, bufsize - dir_len, "/../config/proxychanins/%s", PROXYCHAINS_CONF_FILE);
++					path = pbuf;
++					if(check_path(path))
++						goto have;
++				}
++				if(dir_len + sizeof("/../config/proxychains/" PROXYCHAINS_CONF_FILE) <= bufsize) {
++					snprintf(pbuf + dir_len, bufsize - dir_len, "/../config/proxychains/%s", PROXYCHAINS_CONF_FILE);
 +					path = pbuf;
 +					if(check_path(path))
 +						goto have;
@@ -93,7 +118,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/common.c vendor/proxychains-ng/
  
  	// priority 4: $SYSCONFDIR/proxychains.conf
  	path = SYSCONFDIR "/" PROXYCHAINS_CONF_FILE;
-@@ -123,9 +159,6 @@
+@@ -123,9 +184,6 @@
  	if(check_path(path))
  		goto have;
  
@@ -182,8 +207,16 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/core.h vendor/proxychains-ng/sr
  extern freeaddrinfo_t true_freeaddrinfo;
 diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxychains-ng/src/libproxychains.c
 --- a/src/libproxychains.c	2026-08-16 20:48:08.254024800 +0800
-+++ b/src/libproxychains.c	2026-08-16 22:05:56.226498200 +0800
-@@ -58,6 +58,7 @@
++++ b/src/libproxychains.c	2026-08-16 22:20:53.382931200 +0800
+@@ -40,6 +40,7 @@
+ #include "core.h"
+ #include "common.h"
+ #include "rdns.h"
++#include "fishhook.h"
+ 
+ #undef 		satosin
+ #define     satosin(x)      ((struct sockaddr_in *) &(x))
+@@ -58,6 +59,7 @@
  close_t true_close;
  close_range_t true_close_range;
  connect_t true_connect;
@@ -191,7 +224,15 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  gethostbyname_t true_gethostbyname;
  getaddrinfo_t true_getaddrinfo;
  freeaddrinfo_t true_freeaddrinfo;
-@@ -143,6 +144,11 @@
+@@ -110,6 +112,7 @@
+ const char *proxychains_get_version(void);
+ 
+ static void setup_hooks(void);
++static void setup_runtime_hooks(void);
+ 
+ typedef struct {
+ 	unsigned int first, last, flags;
+@@ -143,8 +146,14 @@
  		proxychains_quiet_mode = 1;
  
  	proxychains_write_log(LOG_PREFIX "DLL init: proxychains-ng %s\n", proxychains_get_version());
@@ -202,8 +243,11 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
 +	}
  
  	setup_hooks();
++	setup_runtime_hooks();
  
-@@ -307,12 +313,12 @@
+ 	/* read the config file */
+ 	get_chain_data(proxychains_pd, &proxychains_proxy_count, &proxychains_ct);
+@@ -307,12 +316,12 @@
  	*ct = DYNAMIC_TYPE;
  
  	env = get_config_path(getenv(PROXYCHAINS_CONF_FILE_ENV_VAR), buf, sizeof(buf));
@@ -220,7 +264,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  	while(fgets(buf, sizeof(buf), file)) {
  		buff = buf;
  		/* remove leading whitespace */
-@@ -339,7 +345,7 @@
+@@ -339,7 +348,7 @@
  					if(!proxy_from_string(buff, type, host, &port_n, pd[count].user, pd[count].pass)) {
  						inv:
  						fprintf(stderr, "error: invalid item in proxylist section: %s", buff);
@@ -229,7 +273,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  					}
  				}
  
-@@ -361,7 +367,7 @@
+@@ -361,7 +370,7 @@
  						fprintf(stderr, "proxy %s has invalid value or is not numeric\n", host);
  						fprintf(stderr, "non-numeric ips are only allowed under the following circumstances:\n");
  						fprintf(stderr, "chaintype == strict (%s), proxy is not first in list (%s), proxy_dns active (%s)\n\n", bool_str(*ct == STRICT_TYPE), bool_str(count > 0), rdns_resolver_string(proxychains_resolver));
@@ -238,7 +282,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  					}
  				}
  
-@@ -398,7 +404,7 @@
+@@ -398,7 +407,7 @@
  					if(remote_dns_subnet >= 256) {
  						fprintf(stderr,
  							"remote_dns_subnet: invalid value. requires a number between 0 and 255.\n");
@@ -247,7 +291,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  					}
  				} else if(STR_STARTSWITH(buff, "localnet")) {
  					char colon, extra, right_bracket[2];
-@@ -406,7 +412,7 @@
+@@ -406,7 +415,7 @@
  					int local_family, n, valid;
  					if(sscanf(buff, "%s %53[^/]/%15s%c", user, local_addr_port, local_netmask, &extra) != 3) {
  						fprintf(stderr, "localnet format error");
@@ -256,7 +300,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  					}
  					p = strchr(local_addr_port, ':');
  					if(!p || p == strrchr(local_addr_port, ':')) {
-@@ -423,7 +429,7 @@
+@@ -423,7 +432,7 @@
  					}
  					if(!valid) {
  						fprintf(stderr, "localnet address or port error\n");
@@ -265,7 +309,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  					}
  					if(local_port) {
  						PDEBUG("added localnet: netaddr=%s, port=%u, netmask=%s\n",
-@@ -447,7 +453,7 @@
+@@ -447,7 +456,7 @@
  						}
  						if(!valid) {
  							fprintf(stderr, "localnet address error\n");
@@ -274,7 +318,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  						}
  						if(local_family == AF_INET && strchr(local_netmask, '.')) {
  							valid =
-@@ -469,7 +475,7 @@
+@@ -469,7 +478,7 @@
  						}
  						if(!valid) {
  							fprintf(stderr, "localnet netmask error\n");
@@ -283,7 +327,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  						}
  						++num_localnet_addr;
  					} else {
-@@ -481,7 +487,7 @@
+@@ -481,7 +490,7 @@
  					pc = strchr(buff, '=');
  					if(!pc) {
  						fprintf(stderr, "error: missing equals sign '=' in chain_len directive.\n");
@@ -292,7 +336,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  					}
  					len = atoi(++pc);
  					proxychains_max_chain = (len ? len : 1);
-@@ -496,13 +502,13 @@
+@@ -496,13 +505,13 @@
  
  					if(sscanf(buff, "%s %15[^:]:%5s", user, rdnsd_addr, rdnsd_port) < 3) {
  						fprintf(stderr, "proxy_dns_daemon format error\n");
@@ -308,7 +352,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  					}
  					rdns_server_buffer.sin_port = htons(atoi(rdnsd_port));
  					proxychains_resolver = DNSLF_RDNS_DAEMON;
-@@ -510,7 +516,7 @@
+@@ -510,7 +519,7 @@
  				} else if(STR_STARTSWITH(buff, "dnat")) {
  					if(sscanf(buff, "%s %21[^ ] %21s\n", user, dnat_orig_addr_port, dnat_new_addr_port) < 3) {
  						fprintf(stderr, "dnat format error");
@@ -317,7 +361,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  					}
  					/* clean previously used buffer */
  					memset(dnat_orig_port, 0, sizeof(dnat_orig_port) / sizeof(dnat_orig_port[0]));
-@@ -526,7 +532,7 @@
+@@ -526,7 +535,7 @@
  							      &dnats[num_dnats].orig_dst);
  						if(error <= 0) {
  							fprintf(stderr, "dnat original destination address error\n");
@@ -326,7 +370,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  						}
  
  						error =
-@@ -534,7 +540,7 @@
+@@ -534,7 +543,7 @@
  							      &dnats[num_dnats].new_dst);
  						if(error <= 0) {
  							fprintf(stderr, "dnat effective destination address error\n");
@@ -335,7 +379,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  						}
  
  						if(dnat_orig_port[0]) {
-@@ -562,14 +568,24 @@
+@@ -562,14 +571,24 @@
  	}
  #ifndef BROKEN_FCLOSE
  	fclose(file);
@@ -361,7 +405,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  }
  
  /*******  HOOK FUNCTIONS  *******/
-@@ -670,6 +686,9 @@
+@@ -670,6 +689,9 @@
  	INIT();
  	PFUNC();
  
@@ -371,7 +415,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  	int socktype = 0, flags = 0, ret = 0;
  	socklen_t optlen = 0;
  	ip_type dest_ip;
-@@ -766,6 +785,28 @@
+@@ -766,6 +788,28 @@
  	return ret;
  }
  
@@ -400,7 +444,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  #ifdef IS_SOLARIS
  HOOKFUNC(int, __xnet_connect, int sock, const struct sockaddr *addr, unsigned int len)
  	return connect(sock, addr, len);
-@@ -913,6 +954,9 @@
+@@ -913,6 +957,9 @@
  
  static void setup_hooks(void) {
  	SETUP_SYM(connect);
@@ -410,7 +454,35 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  	SETUP_SYM(sendto);
  	SETUP_SYM(gethostbyname);
  	SETUP_SYM(getaddrinfo);
-@@ -934,6 +978,9 @@
+@@ -927,6 +974,27 @@
+ }
+ 
+ #ifdef MONTEREY_HOOKING
++static void setup_runtime_hooks(void) {
++	struct rebinding rebindings[] = {
++		{"connect", (void*)pxcng_connect, (void**)&true_connect},
++		{"connectx", (void*)pxcng_connectx, (void**)&true_connectx},
++		{"sendto", (void*)pxcng_sendto, (void**)&true_sendto},
++		{"gethostbyname", (void*)pxcng_gethostbyname, (void**)&true_gethostbyname},
++		{"getaddrinfo", (void*)pxcng_getaddrinfo, (void**)&true_getaddrinfo},
++		{"freeaddrinfo", (void*)pxcng_freeaddrinfo, (void**)&true_freeaddrinfo},
++		{"gethostbyaddr", (void*)pxcng_gethostbyaddr, (void**)&true_gethostbyaddr},
++		{"getnameinfo", (void*)pxcng_getnameinfo, (void**)&true_getnameinfo},
++		{"close", (void*)pxcng_close, (void**)&true_close},
++	};
++	if(rebind_symbols(rebindings, sizeof(rebindings)/sizeof(rebindings[0])) != 0)
++		proxychains_write_log(LOG_PREFIX "fishhook rebind_symbols failed\n");
++	else
++		proxychains_write_log(LOG_PREFIX "fishhook runtime rebinding installed\n");
++}
++#else
++static void setup_runtime_hooks(void) {}
++#endif
++#ifdef MONTEREY_HOOKING
+ 
+ #define DYLD_INTERPOSE(_replacement,_replacee) \
+    __attribute__((used)) static struct{ const void* replacement; const void* replacee; } _interpose_##_replacee \
+@@ -934,6 +1002,9 @@
  #define DYLD_HOOK(F) DYLD_INTERPOSE(pxcng_ ## F, F)
  
  DYLD_HOOK(connect);

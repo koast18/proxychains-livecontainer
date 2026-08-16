@@ -129,9 +129,21 @@ char *get_config_path(char* default_path, char* pbuf, size_t bufsize) {
 		path = pbuf;
 		if(check_path(path))
 			goto have;
+
+		// priority 3e: LiveContainer Documents/config/proxychanins
+		snprintf(pbuf, bufsize, "%s/Documents/config/proxychanins/%s", home, PROXYCHAINS_CONF_FILE);
+		path = pbuf;
+		if(check_path(path))
+			goto have;
+
+		// priority 3f: LiveContainer Documents/config/proxychains
+		snprintf(pbuf, bufsize, "%s/Documents/config/proxychains/%s", home, PROXYCHAINS_CONF_FILE);
+		path = pbuf;
+		if(check_path(path))
+			goto have;
 	}
 
-	// priority 3e: next to this dylib
+	// priority 3e: next to this dylib, plus relative Documents/config paths
 	{
 		Dl_info dli;
 		if(dladdr((void*)&get_config_path, &dli) && dli.dli_fname && dli.dli_fname[0]) {
@@ -139,8 +151,21 @@ char *get_config_path(char* default_path, char* pbuf, size_t bufsize) {
 			char *slash = strrchr(pbuf, '/');
 			if(slash) {
 				size_t dir_len = (size_t)(slash - pbuf);
+				*slash = 0;
 				if(dir_len + sizeof("/" PROXYCHAINS_CONF_FILE) <= bufsize) {
-					strcpy(slash + 1, PROXYCHAINS_CONF_FILE);
+					snprintf(pbuf + dir_len, bufsize - dir_len, "/%s", PROXYCHAINS_CONF_FILE);
+					path = pbuf;
+					if(check_path(path))
+						goto have;
+				}
+				if(dir_len + sizeof("/../config/proxychanins/" PROXYCHAINS_CONF_FILE) <= bufsize) {
+					snprintf(pbuf + dir_len, bufsize - dir_len, "/../config/proxychanins/%s", PROXYCHAINS_CONF_FILE);
+					path = pbuf;
+					if(check_path(path))
+						goto have;
+				}
+				if(dir_len + sizeof("/../config/proxychains/" PROXYCHAINS_CONF_FILE) <= bufsize) {
+					snprintf(pbuf + dir_len, bufsize - dir_len, "/../config/proxychains/%s", PROXYCHAINS_CONF_FILE);
 					path = pbuf;
 					if(check_path(path))
 						goto have;

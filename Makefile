@@ -7,8 +7,9 @@
 #   make install DESTDIR=...
 #
 # The output is a single self-hooking dylib. It uses dyld interposing
-# (same mechanism as proxychains-ng on macOS Monterey+) so it does NOT
-# depend on MobileSubstrate/CydiaSubstrate.
+# (same mechanism as proxychains-ng on macOS Monterey+) plus fishhook runtime
+# rebinding, so it works both when loaded early and when LiveContainer dlopen()s
+# it after the app is already running. No MobileSubstrate/CydiaSubstrate needed.
 
 ARCH ?= arm64
 IOS_DEPLOYMENT_TARGET ?= 15.0
@@ -18,11 +19,13 @@ CODESIGN ?= codesign
 
 VENDOR := vendor/proxychains-ng
 SRC := $(VENDOR)/src
+FISHHOOK_DIR := fishhook
 
 PRODUCT := libproxychains_livecontainer.dylib
 CONFIG  := proxychains.conf
 
 OBJS := \
+	$(FISHHOOK_DIR)/fishhook.o \
 	$(SRC)/version.o \
 	$(SRC)/core.o \
 	$(SRC)/common.o \
@@ -38,7 +41,7 @@ CPPFLAGS := -D_GNU_SOURCE -D_DARWIN_C_SOURCE -DIS_MAC=1 -DMONTEREY_HOOKING -DSUP
 	-DHAVE_CLOCK_GETTIME
 
 CFLAGS := -std=c99 -Wall -O2 -fPIC \
-	-isysroot $(SDKROOT) -arch $(ARCH) -miphoneos-version-min=$(IOS_DEPLOYMENT_TARGET)
+	-Ifishhook -isysroot $(SDKROOT) -arch $(ARCH) -miphoneos-version-min=$(IOS_DEPLOYMENT_TARGET)
 
 LDFLAGS := -dynamiclib -arch $(ARCH) -isysroot $(SDKROOT) \
 	-miphoneos-version-min=$(IOS_DEPLOYMENT_TARGET) \
@@ -51,6 +54,9 @@ all: $(PRODUCT) sign
 $(PRODUCT): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^
 
+$(FISHHOOK_DIR)/fishhook.o: $(FISHHOOK_DIR)/fishhook.c $(FISHHOOK_DIR)/fishhook.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
 $(SRC)/version.o: $(SRC)/version.h
 
 $(SRC)/%.o: $(SRC)/%.c
@@ -60,7 +66,7 @@ sign: $(PRODUCT)
 	$(CODESIGN) --force --sign - $(PRODUCT)
 
 clean:
-	rm -f $(PRODUCT) $(OBJS)
+	rm -f $(PRODUCT) $(OBJS) $(FISHHOOK_DIR)/fishhook.o
 
 install: all
 	install -d $(DESTDIR)/Library/MobileSubstrate/DynamicLibraries $(DESTDIR)/usr/lib
