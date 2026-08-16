@@ -688,10 +688,10 @@ HOOKFUNC(int, close_range, unsigned first, unsigned last, int flags) {
 HOOKFUNC(int, connect, int sock, const struct sockaddr *addr, unsigned int len) {
 	INIT();
 	PFUNC();
+	PDEBUG("connect called: sock=%d family=%u\n", sock, addr ? (unsigned)addr->sa_family : 0u);
 
 	if(!proxychains_proxy_count)
 		return true_connect(sock, addr, len);
-
 	int socktype = 0, flags = 0, ret = 0;
 	socklen_t optlen = 0;
 	ip_type dest_ip;
@@ -797,6 +797,12 @@ HOOKFUNC(int, connectx, int sock, const sa_endpoints_t *endpoints,
          sae_associd_t associd, unsigned int flags, const struct iovec *ext,
          unsigned int extlen, size_t *pcid, sae_connid_t *connid) {
 	INIT();
+	PDEBUG("connectx called: sock=%d flags=%u ext=%p pcid=%p connid=%p\n",
+	       sock, flags, (void*)ext, (void*)pcid, (void*)connid);
+	if(endpoints)
+		PDEBUG("connectx dst: family=%u len=%u\n",
+		       endpoints->sae_dstaddr ? (unsigned)endpoints->sae_dstaddr->sa_family : 0u,
+		       (unsigned)endpoints->sae_dstaddrlen);
 	(void)associd;
 	(void)ext;
 	(void)extlen;
@@ -804,8 +810,14 @@ HOOKFUNC(int, connectx, int sock, const sa_endpoints_t *endpoints,
 	(void)connid;
 	if(!proxychains_proxy_count || !endpoints || !endpoints->sae_dstaddr ||
 	   endpoints->sae_dstaddrlen < sizeof(struct sockaddr) || flags != 0 ||
-	   ext != NULL || extlen != 0 || pcid != NULL || connid != NULL)
+	   ext != NULL || extlen != 0 || pcid != NULL || connid != NULL) {
+		PDEBUG("connectx bypassed: proxy_count=%u endpoints=%p dst=%p flags=%u ext=%p extlen=%u pcid=%p connid=%p\n",
+		       proxychains_proxy_count, (void*)endpoints,
+		       endpoints ? (void*)endpoints->sae_dstaddr : 0,
+		       flags, (void*)ext, extlen, (void*)pcid, (void*)connid);
 		return true_connectx(sock, endpoints, associd, flags, ext, extlen, pcid, connid);
+	}
+	PDEBUG("connectx proxying via pxcng_connect\n");
 	return pxcng_connect(sock, endpoints->sae_dstaddr, endpoints->sae_dstaddrlen);
 }
 #endif

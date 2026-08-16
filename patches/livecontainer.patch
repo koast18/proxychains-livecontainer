@@ -222,7 +222,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/debug.h vendor/proxychains-ng/s
  # define DUMP_PROXY_CHAIN(A, B) dump_proxy_chain(A, B)
 diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxychains-ng/src/libproxychains.c
 --- a/src/libproxychains.c	2026-08-16 20:48:08.254024800 +0800
-+++ b/src/libproxychains.c	2026-08-16 22:20:53.382931200 +0800
++++ b/src/libproxychains.c	2026-08-16 22:43:19.006957300 +0800
 @@ -40,6 +40,7 @@
  #include "core.h"
  #include "common.h"
@@ -420,17 +420,18 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  }
  
  /*******  HOOK FUNCTIONS  *******/
-@@ -670,6 +689,9 @@
+@@ -669,7 +688,10 @@
+ HOOKFUNC(int, connect, int sock, const struct sockaddr *addr, unsigned int len) {
  	INIT();
  	PFUNC();
++	PDEBUG("connect called: sock=%d family=%u\n", sock, addr ? (unsigned)addr->sa_family : 0u);
  
 +	if(!proxychains_proxy_count)
 +		return true_connect(sock, addr, len);
-+
  	int socktype = 0, flags = 0, ret = 0;
  	socklen_t optlen = 0;
  	ip_type dest_ip;
-@@ -766,6 +788,28 @@
+@@ -766,6 +788,40 @@
  	return ret;
  }
  
@@ -443,6 +444,12 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
 +         sae_associd_t associd, unsigned int flags, const struct iovec *ext,
 +         unsigned int extlen, size_t *pcid, sae_connid_t *connid) {
 +	INIT();
++	PDEBUG("connectx called: sock=%d flags=%u ext=%p pcid=%p connid=%p\n",
++	       sock, flags, (void*)ext, (void*)pcid, (void*)connid);
++	if(endpoints)
++		PDEBUG("connectx dst: family=%u len=%u\n",
++		       endpoints->sae_dstaddr ? (unsigned)endpoints->sae_dstaddr->sa_family : 0u,
++		       (unsigned)endpoints->sae_dstaddrlen);
 +	(void)associd;
 +	(void)ext;
 +	(void)extlen;
@@ -450,8 +457,14 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
 +	(void)connid;
 +	if(!proxychains_proxy_count || !endpoints || !endpoints->sae_dstaddr ||
 +	   endpoints->sae_dstaddrlen < sizeof(struct sockaddr) || flags != 0 ||
-+	   ext != NULL || extlen != 0 || pcid != NULL || connid != NULL)
++	   ext != NULL || extlen != 0 || pcid != NULL || connid != NULL) {
++		PDEBUG("connectx bypassed: proxy_count=%u endpoints=%p dst=%p flags=%u ext=%p extlen=%u pcid=%p connid=%p\n",
++		       proxychains_proxy_count, (void*)endpoints,
++		       endpoints ? (void*)endpoints->sae_dstaddr : 0,
++		       flags, (void*)ext, extlen, (void*)pcid, (void*)connid);
 +		return true_connectx(sock, endpoints, associd, flags, ext, extlen, pcid, connid);
++	}
++	PDEBUG("connectx proxying via pxcng_connect\n");
 +	return pxcng_connect(sock, endpoints->sae_dstaddr, endpoints->sae_dstaddrlen);
 +}
 +#endif
@@ -459,7 +472,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  #ifdef IS_SOLARIS
  HOOKFUNC(int, __xnet_connect, int sock, const struct sockaddr *addr, unsigned int len)
  	return connect(sock, addr, len);
-@@ -913,6 +957,9 @@
+@@ -913,6 +969,9 @@
  
  static void setup_hooks(void) {
  	SETUP_SYM(connect);
@@ -469,7 +482,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  	SETUP_SYM(sendto);
  	SETUP_SYM(gethostbyname);
  	SETUP_SYM(getaddrinfo);
-@@ -927,6 +974,27 @@
+@@ -927,6 +986,27 @@
  }
  
  #ifdef MONTEREY_HOOKING
@@ -497,7 +510,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  
  #define DYLD_INTERPOSE(_replacement,_replacee) \
     __attribute__((used)) static struct{ const void* replacement; const void* replacee; } _interpose_##_replacee \
-@@ -934,6 +1002,9 @@
+@@ -934,6 +1014,9 @@
  #define DYLD_HOOK(F) DYLD_INTERPOSE(pxcng_ ## F, F)
  
  DYLD_HOOK(connect);
