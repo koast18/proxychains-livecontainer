@@ -129,6 +129,17 @@ The dylib searches for the config in this order:
 If no config is found, the dylib logs a message and passes traffic through
 unmodified instead of crashing the app.
 
+To prevent non-TCP traffic (UDP, QUIC/HTTP3, ICMP, raw sockets) from bypassing
+the proxy, add this line to `proxychains.conf`:
+
+```
+block_non_tcp
+```
+
+This makes the dylib drop non-TCP socket sends/connects instead of letting them
+go direct. It can break UDP-based features (games, VoIP, video calls), so only
+enable it when you want a strict no-leak mode.
+
 ## How it works
 
 - The proxychains-ng library is compiled with `-DMONTEREY_HOOKING`.

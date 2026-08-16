@@ -116,6 +116,7 @@ typedef int (*getnameinfo_t) (const struct sockaddr *, socklen_t, char *,
 
 typedef ssize_t (*sendto_t) (int sockfd, const void *buf, size_t len, int flags,
 			     const struct sockaddr *dest_addr, socklen_t addrlen);
+typedef ssize_t (*sendmsg_t) (int sockfd, const struct msghdr *msg, int flags);
 
 
 
@@ -126,6 +127,7 @@ extern getaddrinfo_t true_getaddrinfo;
 extern freeaddrinfo_t true_freeaddrinfo;
 extern getnameinfo_t true_getnameinfo;
 extern gethostbyaddr_t true_gethostbyaddr;
+extern sendmsg_t true_sendmsg;
 
 struct gethostbyname_data {
 	struct hostent hostent_space;

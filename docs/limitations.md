@@ -61,7 +61,7 @@ the WebContent process.
 |---|---|---|
 | WKWebView page loads | WebContent process | Solved on iOS 17+ via `WKWebsiteDataStore.proxyConfigurations` |
 | Private/custom WKWebsiteDataStore paths | App creates stores through non-default/non-persistent methods not swizzled | Partially solved; can add more swizzles (`dataStoreForIdentifier:`, `_WKWebsiteDataStoreConfiguration`) if needed |
-| UDP / QUIC / HTTP3 | App uses UDP-based transports, not TCP CONNECT | Not proxied by current HTTP CONNECT config; use HTTP/3 relay proxy config or VPN |
+| UDP / QUIC / HTTP3 | App uses UDP-based transports, not TCP CONNECT | Can be forced to TCP by enabling `block_non_tcp` (drops UDP/QUIC); for full UDP proxying use HTTP/3 relay proxy config or VPN |
 | Direct `syscall(SYS_connect)` / `SYS_connectx` | App bypasses libSystem wrappers | Not currently hooked; can add `syscall()`/`syscall_async` hooks in a future version |
 | `connectx()` with non-NULL `pcid`/`connid`/`ext` | Network.framework / NWConnection paths | Currently passed through; can be improved by applying proxy at NWConnection level or using `nw_proxy_config` more broadly |
 | App Extensions | Share/Action/Today/Widget run in separate processes | Not covered; requires per-process injection or VPN |

@@ -66,6 +66,7 @@ freeaddrinfo_t true_freeaddrinfo;
 getnameinfo_t true_getnameinfo;
 gethostbyaddr_t true_gethostbyaddr;
 sendto_t true_sendto;
+sendmsg_t true_sendmsg;
 
 int tcp_read_time_out;
 int tcp_connect_time_out;
@@ -76,6 +77,7 @@ unsigned int proxychains_proxy_offset = 0;
 int proxychains_got_chain_data = 0;
 unsigned int proxychains_max_chain = 1;
 int proxychains_quiet_mode = 0;
+int proxychains_block_non_tcp = 0;
 enum dns_lookup_flavor proxychains_resolver = DNSLF_LIBC;
 localaddr_arg localnet_addr[MAX_LOCALNET];
 size_t num_localnet_addr = 0;
@@ -400,6 +402,9 @@ inv_host:
 					*ct = DYNAMIC_TYPE;
 				} else if(!strcmp(buff, "round_robin_chain")) {
 					*ct = ROUND_ROBIN_TYPE;
+				} else if(!strcmp(buff, "block_non_tcp")) {
+					proxychains_block_non_tcp = 1;
+					proxychains_write_log(LOG_PREFIX "block_non_tcp enabled: non-TCP traffic will be dropped\n");
 				} else if(STR_STARTSWITH(buff, "tcp_read_time_out")) {
 					sscanf(buff, "%s %d", user, &tcp_read_time_out);
 				} else if(STR_STARTSWITH(buff, "tcp_connect_time_out")) {
@@ -602,6 +607,20 @@ no_proxy:
 #define HOOKFUNC(R, N, args...) R N ( EXPAND(args) )
 #endif
 
+static int lc_drop_non_tcp_if_enabled(int fd) {
+	int socktype = 0;
+	socklen_t optlen = sizeof(socktype);
+	if(!proxychains_block_non_tcp)
+		return 0;
+	if(getsockopt(fd, SOL_SOCKET, SO_TYPE, &socktype, &optlen) != 0)
+		return 0;
+	if(socktype != SOCK_STREAM) {
+		errno = EPROTONOSUPPORT;
+		return 1;
+	}
+	return 0;
+}
+
 HOOKFUNC(int, close, int fd) {
 	if(!init_l) {
 		if(close_fds_cnt>=(sizeof close_fds/sizeof close_fds[0])) goto err;
@@ -708,6 +727,8 @@ HOOKFUNC(int, connect, int sock, const struct sockaddr *addr, unsigned int len) 
 	optlen = sizeof(socktype);
 	sa_family_t fam = SOCKFAMILY(*addr);
 	getsockopt(sock, SOL_SOCKET, SO_TYPE, &socktype, &optlen);
+	if(lc_drop_non_tcp_if_enabled(sock))
+		return -1;
 	if(!((fam  == AF_INET || fam == AF_INET6) && socktype == SOCK_STREAM))
 		return true_connect(sock, addr, len);
 
@@ -949,6 +970,8 @@ HOOKFUNC(ssize_t, sendto, int sockfd, const void *buf, size_t len, int flags,
 	       const struct sockaddr *dest_addr, socklen_t addrlen) {
 	INIT();
 	PFUNC();
+	if(lc_drop_non_tcp_if_enabled(sockfd))
+		return -1;
 	if (flags & MSG_FASTOPEN) {
 		if (!connect(sockfd, dest_addr, addrlen) && errno != EINPROGRESS) {
 			return -1;
@@ -958,6 +981,14 @@ HOOKFUNC(ssize_t, sendto, int sockfd, const void *buf, size_t len, int flags,
 		flags &= ~MSG_FASTOPEN;
 	}
 	return true_sendto(sockfd, buf, len, flags, dest_addr, addrlen);
+}
+
+HOOKFUNC(ssize_t, sendmsg, int sockfd, const struct msghdr *msg, int flags) {
+	INIT();
+	PFUNC();
+	if(lc_drop_non_tcp_if_enabled(sockfd))
+		return -1;
+	return true_sendmsg(sockfd, msg, flags);
 }
 
 #ifdef MONTEREY_HOOKING
@@ -975,6 +1006,7 @@ static void setup_hooks(void) {
 	SETUP_SYM(connectx);
 #endif
 	SETUP_SYM(sendto);
+	SETUP_SYM(sendmsg);
 	SETUP_SYM(gethostbyname);
 	SETUP_SYM(getaddrinfo);
 	SETUP_SYM(freeaddrinfo);
@@ -993,6 +1025,7 @@ static void setup_runtime_hooks(void) {
 		{"connect", (void*)pxcng_connect, (void**)&true_connect},
 		{"connectx", (void*)pxcng_connectx, (void**)&true_connectx},
 		{"sendto", (void*)pxcng_sendto, (void**)&true_sendto},
+		{"sendmsg", (void*)pxcng_sendmsg, (void**)&true_sendmsg},
 		{"gethostbyname", (void*)pxcng_gethostbyname, (void**)&true_gethostbyname},
 		{"getaddrinfo", (void*)pxcng_getaddrinfo, (void**)&true_getaddrinfo},
 		{"freeaddrinfo", (void*)pxcng_freeaddrinfo, (void**)&true_freeaddrinfo},
@@ -1020,6 +1053,7 @@ DYLD_HOOK(connect);
 DYLD_HOOK(connectx);
 #endif
 DYLD_HOOK(sendto);
+DYLD_HOOK(sendmsg);
 DYLD_HOOK(gethostbyname);
 DYLD_HOOK(getaddrinfo);
 DYLD_HOOK(freeaddrinfo);

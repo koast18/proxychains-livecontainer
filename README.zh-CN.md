@@ -106,6 +106,7 @@ $HOME/Documents/proxychains.log
 - 同时使用 dyld interpose 和 fishhook 运行时重绑定；即使 LiveContainer 是在 App 启动后才 `dlopen()` 注入 dylib，也能尽量 hook 到网络函数。
 - 会设置 `WKWebsiteDataStore.proxyConfigurations`，让 WKWebView 浏览器（iOS 17+）也能走 HTTP 代理。
 - 找不到配置时不会让 App 崩溃，而是直连放行。
+- 可以在配置里加 `block_non_tcp` 直接丢弃非 TCP 流量（UDP/QUIC/ICMP/raw socket），避免它们绕过代理。注意这会破坏游戏、VoIP、视频通话等 UDP 功能。
 - 默认排除 loopback，避免代理自身和 LiveContainer 内部被递归代理。
 - `connectx` 为尽力而为：带非 NULL 连接 ID 的调用会直接放行，避免破坏 Apple Network.framework 状态。
 - 许可证：GPLv2。
