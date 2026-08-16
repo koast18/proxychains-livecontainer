@@ -784,18 +784,20 @@ HOOKFUNC(int, connect, int sock, const struct sockaddr *addr, unsigned int len) 
  * connect().  The ABI-compatible prototype below matches the Darwin
  * connectx() syscall wrapper.  We only intercept plain stream connects and
  * route them through the same proxychains core. */
-HOOKFUNC(int, connectx, int sock, const struct sockaddr *endpoints, unsigned int sa_len,
-         uint32_t associd, uint32_t *cid, unsigned int flags,
-         const struct ifnet_interface_info *ifinfo, uint32_t *connid) {
+HOOKFUNC(int, connectx, int sock, const sa_endpoints_t *endpoints,
+         sae_associd_t associd, unsigned int flags, const struct iovec *ext,
+         unsigned int extlen, size_t *pcid, sae_connid_t *connid) {
 	INIT();
 	(void)associd;
-	(void)cid;
-	(void)ifinfo;
+	(void)ext;
+	(void)extlen;
+	(void)pcid;
 	(void)connid;
-	if(!proxychains_proxy_count || !endpoints || sa_len < sizeof(struct sockaddr) ||
-	   flags != 0 || cid != NULL || connid != NULL)
-		return true_connectx(sock, endpoints, sa_len, associd, cid, flags, ifinfo, connid);
-	return pxcng_connect(sock, endpoints, sa_len);
+	if(!proxychains_proxy_count || !endpoints || !endpoints->sae_dstaddr ||
+	   endpoints->sae_dstaddrlen < sizeof(struct sockaddr) || flags != 0 ||
+	   ext != NULL || extlen != 0 || pcid != NULL || connid != NULL)
+		return true_connectx(sock, endpoints, associd, flags, ext, extlen, pcid, connid);
+	return pxcng_connect(sock, endpoints->sae_dstaddr, endpoints->sae_dstaddrlen);
 }
 #endif
 

@@ -105,16 +105,26 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/common.c vendor/proxychains-ng/
  	return path;
 diff -ruN '--exclude=.git' ../proxychains-ng/src/core.h vendor/proxychains-ng/src/core.h
 --- a/src/core.h	2026-08-16 20:48:08.252050200 +0800
-+++ b/src/core.h	2026-08-16 21:07:48.004979600 +0800
-@@ -102,6 +102,8 @@
++++ b/src/core.h	2026-08-16 21:32:56.017267200 +0800
+@@ -19,6 +19,7 @@
+ #include <netinet/in.h>
+ #include <sys/types.h>
+ #include <sys/socket.h>
++#include <sys/uio.h>
+ #include <netdb.h>
+ 
+ #ifndef __CORE_HEADER
+@@ -102,8 +103,9 @@
  typedef int (*close_t)(int);
  typedef int (*close_range_t)(unsigned, unsigned, int);
  typedef int (*connect_t)(int, const struct sockaddr *, socklen_t);
-+struct ifnet_interface_info;
-+typedef int (*connectx_t)(int, const struct sockaddr *, unsigned int, uint32_t, uint32_t *, unsigned int, const struct ifnet_interface_info *, uint32_t *);
++typedef int (*connectx_t)(int, const sa_endpoints_t *, sae_associd_t, unsigned int, const struct iovec *, unsigned int, size_t *, sae_connid_t *);
  typedef struct hostent* (*gethostbyname_t)(const char *);
- typedef int (*freeaddrinfo_t)(struct addrinfo *);
+-typedef int (*freeaddrinfo_t)(struct addrinfo *);
++typedef void (*freeaddrinfo_t)(struct addrinfo *);
  typedef struct hostent *(*gethostbyaddr_t) (const void *, socklen_t, int);
+ 
+ typedef int (*getaddrinfo_t)(const char *, const char *, const struct addrinfo *, 
 @@ -118,6 +120,7 @@
  
  
@@ -125,7 +135,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/core.h vendor/proxychains-ng/sr
  extern freeaddrinfo_t true_freeaddrinfo;
 diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxychains-ng/src/libproxychains.c
 --- a/src/libproxychains.c	2026-08-16 20:48:08.254024800 +0800
-+++ b/src/libproxychains.c	2026-08-16 21:15:45.229611800 +0800
++++ b/src/libproxychains.c	2026-08-16 21:32:56.017827600 +0800
 @@ -58,6 +58,7 @@
  close_t true_close;
  close_range_t true_close_range;
@@ -299,7 +309,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  	int socktype = 0, flags = 0, ret = 0;
  	socklen_t optlen = 0;
  	ip_type dest_ip;
-@@ -766,6 +779,26 @@
+@@ -766,6 +779,28 @@
  	return ret;
  }
  
@@ -308,25 +318,27 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
 + * connect().  The ABI-compatible prototype below matches the Darwin
 + * connectx() syscall wrapper.  We only intercept plain stream connects and
 + * route them through the same proxychains core. */
-+HOOKFUNC(int, connectx, int sock, const struct sockaddr *endpoints, unsigned int sa_len,
-+         uint32_t associd, uint32_t *cid, unsigned int flags,
-+         const struct ifnet_interface_info *ifinfo, uint32_t *connid) {
++HOOKFUNC(int, connectx, int sock, const sa_endpoints_t *endpoints,
++         sae_associd_t associd, unsigned int flags, const struct iovec *ext,
++         unsigned int extlen, size_t *pcid, sae_connid_t *connid) {
 +	INIT();
 +	(void)associd;
-+	(void)cid;
-+	(void)ifinfo;
++	(void)ext;
++	(void)extlen;
++	(void)pcid;
 +	(void)connid;
-+	if(!proxychains_proxy_count || !endpoints || sa_len < sizeof(struct sockaddr) ||
-+	   flags != 0 || cid != NULL || connid != NULL)
-+		return true_connectx(sock, endpoints, sa_len, associd, cid, flags, ifinfo, connid);
-+	return pxcng_connect(sock, endpoints, sa_len);
++	if(!proxychains_proxy_count || !endpoints || !endpoints->sae_dstaddr ||
++	   endpoints->sae_dstaddrlen < sizeof(struct sockaddr) || flags != 0 ||
++	   ext != NULL || extlen != 0 || pcid != NULL || connid != NULL)
++		return true_connectx(sock, endpoints, associd, flags, ext, extlen, pcid, connid);
++	return pxcng_connect(sock, endpoints->sae_dstaddr, endpoints->sae_dstaddrlen);
 +}
 +#endif
 +
  #ifdef IS_SOLARIS
  HOOKFUNC(int, __xnet_connect, int sock, const struct sockaddr *addr, unsigned int len)
  	return connect(sock, addr, len);
-@@ -913,6 +946,9 @@
+@@ -913,6 +948,9 @@
  
  static void setup_hooks(void) {
  	SETUP_SYM(connect);
@@ -336,7 +348,7 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxych
  	SETUP_SYM(sendto);
  	SETUP_SYM(gethostbyname);
  	SETUP_SYM(getaddrinfo);
-@@ -934,6 +970,9 @@
+@@ -934,6 +972,9 @@
  #define DYLD_HOOK(F) DYLD_INTERPOSE(pxcng_ ## F, F)
  
  DYLD_HOOK(connect);

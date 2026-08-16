@@ -19,6 +19,7 @@
 #include <netinet/in.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <netdb.h>
 
 #ifndef __CORE_HEADER
@@ -102,10 +103,9 @@ void proxychains_write_log(char *str, ...);
 typedef int (*close_t)(int);
 typedef int (*close_range_t)(unsigned, unsigned, int);
 typedef int (*connect_t)(int, const struct sockaddr *, socklen_t);
-struct ifnet_interface_info;
-typedef int (*connectx_t)(int, const struct sockaddr *, unsigned int, uint32_t, uint32_t *, unsigned int, const struct ifnet_interface_info *, uint32_t *);
+typedef int (*connectx_t)(int, const sa_endpoints_t *, sae_associd_t, unsigned int, const struct iovec *, unsigned int, size_t *, sae_connid_t *);
 typedef struct hostent* (*gethostbyname_t)(const char *);
-typedef int (*freeaddrinfo_t)(struct addrinfo *);
+typedef void (*freeaddrinfo_t)(struct addrinfo *);
 typedef struct hostent *(*gethostbyaddr_t) (const void *, socklen_t, int);
 
 typedef int (*getaddrinfo_t)(const char *, const char *, const struct addrinfo *, 
