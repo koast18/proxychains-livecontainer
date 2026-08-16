@@ -2,6 +2,7 @@
 #import <Network/Network.h>
 #import <WebKit/WebKit.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -87,7 +88,7 @@ static int lc_create_proxy_config(void) {
     if (!lc_parse_proxy(host, sizeof(host), port, sizeof(port),
                         user, sizeof(user), pass, sizeof(pass)))
         return 0;
-    if (nw_endpoint_create_host == NULL || nw_proxy_config_create_http_connect == NULL)
+    if (!@available(iOS 17.0, *))
         return 0;
 
     ep = nw_endpoint_create_host(host, port);
@@ -99,7 +100,7 @@ static int lc_create_proxy_config(void) {
     if (!g_lc_proxy_config)
         return 0;
 
-    if (user[0] && nw_proxy_config_set_username_and_password != NULL)
+    if (user[0])
         nw_proxy_config_set_username_and_password(g_lc_proxy_config, user, pass[0] ? pass : NULL);
 
     return 1;
@@ -115,8 +116,10 @@ static void lc_apply_proxy_to_store(id store) {
     if (!lc_create_proxy_config())
         return;
 
-    configs = [NSArray arrayWithObjects:(id)g_lc_proxy_config, nil];
-    [store setProxyConfigurations:configs];
+    if (@available(iOS 17.0, *)) {
+        configs = [NSArray arrayWithObjects:(id)g_lc_proxy_config, nil];
+        [store setProxyConfigurations:configs];
+    }
 }
 
 static IMP orig_setWebsiteDataStore;
