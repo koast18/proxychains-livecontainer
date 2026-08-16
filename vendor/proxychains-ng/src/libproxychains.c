@@ -144,6 +144,11 @@ static void do_init(void) {
 		proxychains_quiet_mode = 1;
 
 	proxychains_write_log(LOG_PREFIX "DLL init: proxychains-ng %s\n", proxychains_get_version());
+	{
+		Dl_info dli;
+		if(dladdr((void*)&do_init, &dli) && dli.dli_fname && dli.dli_fname[0])
+			proxychains_write_log(LOG_PREFIX "dylib path: %s\n", dli.dli_fname);
+	}
 
 	setup_hooks();
 
@@ -313,6 +318,7 @@ static void get_chain_data(proxy_data * pd, unsigned int *proxy_count, chain_typ
 		goto no_proxy;
 	}
 
+	proxychains_write_log(LOG_PREFIX "config file found: %s\n", env);
 	while(fgets(buf, sizeof(buf), file)) {
 		buff = buf;
 		/* remove leading whitespace */

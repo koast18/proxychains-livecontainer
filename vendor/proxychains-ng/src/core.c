@@ -106,6 +106,27 @@ static void encode_base_64(char *src, char *dest, int max_len) {
 	*dest++ = 0;
 }
 
+static FILE *proxychains_log_fp;
+static int proxychains_log_ready;
+
+static void proxychains_open_log(void) {
+	const char *path;
+	char buf[1024];
+	if(proxychains_log_ready)
+		return;
+	proxychains_log_ready = 1;
+	path = getenv("PROXYCHAINS_LOG_FILE");
+	if(!path) {
+		const char *home = getenv("HOME");
+		if(home)
+			snprintf(buf, sizeof(buf), "%s/Documents/proxychains.log", home);
+		else
+			snprintf(buf, sizeof(buf), "/tmp/proxychains.log");
+		path = buf;
+	}
+	proxychains_log_fp = fopen(path, "a");
+}
+
 void proxychains_write_log(char *str, ...) {
 	char buff[1024*4];
 	va_list arglist;
@@ -115,6 +136,15 @@ void proxychains_write_log(char *str, ...) {
 		va_end(arglist);
 		fprintf(stderr, "%s", buff);
 		fflush(stderr);
+	}
+	if(!proxychains_log_ready)
+		proxychains_open_log();
+	if(proxychains_log_fp) {
+		va_start(arglist, str);
+		vsnprintf(buff, sizeof(buff), str, arglist);
+		va_end(arglist);
+		fprintf(proxychains_log_fp, "%s", buff);
+		fflush(proxychains_log_fp);
 	}
 }
 

@@ -126,8 +126,25 @@ unmodified instead of crashing the app.
 
 ## Troubleshooting
 
-- If nothing is proxied, confirm the dylib is actually loaded by LiveContainer
-  and that `proxychains.conf` is readable.
+The dylib writes diagnostics to a log file. By default it uses:
+
+```
+$HOME/Documents/proxychains.log
+```
+
+You can override it with the `PROXYCHAINS_LOG_FILE` environment variable.
+
+- If nothing is proxied, first open `proxychains.log` and check:
+  - `DLL init: proxychains-ng ...` → the dylib was loaded.
+  - `dylib path: ...` → shows which copy of the dylib LiveContainer loaded.
+  - `config file found: ...` → confirms your `proxychains.conf` was located.
+  - `Dynamic chain ... OK` → a proxied TCP connection succeeded.
+  - `couldnt find configuration file` → the config is not in a searched path.
+- If the log file does not exist at all, the dylib is probably not being
+  injected/loaded into the hosted app process.
+- If `config file found` appears but no proxy chain lines appear, the app may be
+  using a code path the dylib does not hook (for example `connectx` with
+  non-NULL connection IDs, UDP/QUIC, or a custom network stack).
 - Run a hosted app that prints stderr, or check LiveContainer's system log /
   console for lines starting with `[proxychains]`.
 - Use a proxy server that supports HTTP CONNECT (most HTTP proxies do).

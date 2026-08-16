@@ -62,6 +62,26 @@ http 192.168.1.10 8080
 
 4. 重启 LiveContainer / 宿主 App。
 
+## 诊断
+
+dylib 会把日志写入：
+
+```
+$HOME/Documents/proxychains.log
+```
+
+也可以通过环境变量 `PROXYCHAINS_LOG_FILE` 指定其他路径。
+
+- 如果没生效，先看 `proxychains.log`：
+  - `DLL init: proxychains-ng ...`：dylib 已被加载。
+  - `dylib path: ...`：显示实际加载的 dylib 路径。
+  - `config file found: ...`：说明找到了 `proxychains.conf`。
+  - `Dynamic chain ... OK`：说明某条 TCP 连接已成功走代理。
+  - `couldnt find configuration file`：配置文件不在搜索路径中。
+- 如果日志文件完全不存在，说明 dylib 可能没有被注入到宿主 App 进程。
+- 如果找到了配置但没有代理连接日志，可能是 App 走了未 hook 的路径（例如带非 NULL 连接 ID 的 `connectx`、UDP/QUIC 或私有网络栈）。
+- 也可以看 LiveContainer / 系统日志里以 `[proxychains]` 开头的输出。
+
 ## 说明
 
 - 使用 `-DMONTEREY_HOOKING` 编译，无需 Substrate。
