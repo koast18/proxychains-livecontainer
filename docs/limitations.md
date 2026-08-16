@@ -4,7 +4,7 @@ This document describes what the current `libproxychains_livecontainer.dylib`
 can and cannot intercept, based on testing with Alook 20.3 and general iOS
 networking architecture.
 
-## Why Alook browser page loads are not proxied
+## WKWebView support
 
 Alook is a WKWebView-based browser. On iOS, WKWebView page loading is not done in
 the app's main process. It is handled by a separate system process:
@@ -13,45 +13,38 @@ the app's main process. It is handled by a separate system process:
 com.apple.WebKit.WebContent
 ```
 
-LiveContainer injects the dylib into the hosted app's main process. It does not
-normally inject into WebContent. Therefore:
+A plain libSystem hook in the app process cannot see WebContent traffic.
+However, starting with iOS 17, WebKit exposes:
 
-- The dylib is loaded and fishhook is installed in the Alook main process.
-- The main process's own `connect()` / `NSURLSession` traffic can be proxied.
-- Actual web page loads, subresources, XHR/fetch inside WKWebView happen in
-  WebContent and are **not** seen by the dylib.
+```
+WKWebsiteDataStore.proxyConfigurations
+```
 
-This is why the browser still sees the original IP even though the dylib logs
-show successful loading and configuration.
+This lets the app process tell WebKit to use an HTTP CONNECT proxy for all
+WKWebViews that share that data store. The dylib now:
 
-### What can still be proxied in Alook
+1. Applies the proxy to `[WKWebsiteDataStore defaultDataStore]`.
+2. Swizzles `+[WKWebsiteDataStore nonPersistentDataStore]` so new non-persistent
+   stores also get the proxy.
+3. Swizzles `-[WKWebViewConfiguration setWebsiteDataStore:]` so custom stores
+   assigned to WKWebView configurations also get the proxy.
 
-Features that use the main process networking stack, for example:
+This is the practical way to cover WKWebView page loads without injecting into
+the WebContent process.
 
-- Direct `NSURLSession` requests made by the app itself
-- Download tasks handled by the app process
-- Plain BSD socket connections made by the app process
+### Caveats
 
-### How to cover WKWebView traffic
-
-A userspace dylib hooking only the app process cannot cover WebContent. Practical
-options are:
-
-1. Inject the dylib into `com.apple.WebKit.WebContent` as well (requires
-   LiveContainer / the injection mechanism to support injecting into child
-   processes; not generally available).
-2. Use a system-wide / network-level proxy:
-   - HTTP proxy configured through a VPN (`NEPacketTunnelProvider`)
-   - iptables/pf/firewall-level redirection (requires jailbreak/root)
-   - a proxy running on the same network configured as the iOS system proxy
-3. For a custom app, replace WKWebView with a networking stack that runs in the
-   same process, or proxy at the server/CDN layer.
+- Requires iOS 17 or newer (the user's iOS 18.6 is fine).
+- If an app builds a `WKWebsiteDataStore` through a private path not covered by
+  the swizzles above, it may still bypass the proxy.
+- WebKit may cache the network process / data store configuration; if a web view
+  is created before the dylib is loaded, restarting the app is needed.
 
 ## General types of traffic the current dylib cannot proxy
 
 | Gap | Reason |
 |---|---|
-| WKWebView page loads | Networking happens in `WebContent`, a separate process |
+| WKWebView page loads | Covered on iOS 17+ via `WKWebsiteDataStore.proxyConfigurations`; not covered if the app uses a private/uncached data store path |
 | App Extensions | Share/Action/Today/Widget extensions run in separate extension processes |
 | XPC services / helper processes | Separate processes not injected by LiveContainer |
 | UDP / QUIC / HTTP3 | proxychains only handles TCP `connect()` |
@@ -67,5 +60,7 @@ options are:
 - To verify the dylib works, use an app/feature whose network requests are made
   in the main app process (e.g. a simple URLSession-based app, or Alook's own
   download manager if it uses main-process networking).
-- For browsers and WKWebView-based apps, a dylib-only hook is not sufficient.
-  Use a VPN-based proxy solution to cover all processes and protocols.
+- For WKWebView-based browsers, use v0.1.5+ so the dylib sets
+  `WKWebsiteDataStore.proxyConfigurations`. If that still does not work for a
+  particular app, the app is likely using a data store path not covered by the
+  swizzles, and a VPN-based proxy solution remains the most robust fallback.

@@ -78,7 +78,7 @@ http 192.168.1.10 8080
 
 ## 已知限制
 
-参见 [docs/limitations.md](./docs/limitations.md)：WKWebView 网页加载、App Extension、UDP/QUIC、带连接 ID 的 connectx 等无法被当前 dylib 代理。
+参见 [docs/limitations.md](./docs/limitations.md)：App Extension、UDP/QUIC、带连接 ID 的 connectx 等无法被当前 dylib 代理。WKWebView 网页加载已通过 `WKWebsiteDataStore.proxyConfigurations` 在 iOS 17+ 上支持。
 
 ## 诊断
 
@@ -104,6 +104,7 @@ $HOME/Documents/proxychains.log
 
 - 使用 `-DMONTEREY_HOOKING` 编译，无需 Substrate。
 - 同时使用 dyld interpose 和 fishhook 运行时重绑定；即使 LiveContainer 是在 App 启动后才 `dlopen()` 注入 dylib，也能尽量 hook 到网络函数。
+- 会设置 `WKWebsiteDataStore.proxyConfigurations`，让 WKWebView 浏览器（iOS 17+）也能走 HTTP 代理。
 - 找不到配置时不会让 App 崩溃，而是直连放行。
 - 默认排除 loopback，避免代理自身和 LiveContainer 内部被递归代理。
 - `connectx` 为尽力而为：带非 NULL 连接 ID 的调用会直接放行，避免破坏 Apple Network.framework 状态。

@@ -22,6 +22,8 @@ Network.framework/NSURLSession socket path.
 - No Substrate / jailbreak dependency
 - Uses dyld interposing **and** fishhook runtime rebinding, so it also works when
   LiveContainer loads the dylib with `dlopen()` after the app is already running
+- Sets `WKWebsiteDataStore.proxyConfigurations` so WKWebView-based apps (browsers)
+  can also use the HTTP proxy on iOS 17+
 - Hooks:
   - `connect`
   - `connectx` (when built with `MONTEREY_HOOKING`, the default)
@@ -143,7 +145,7 @@ unmodified instead of crashing the app.
 
 ## Known limitations
 
-See [docs/limitations.md](./docs/limitations.md) for details about traffic that cannot be proxied (WKWebView, app extensions, UDP/QUIC, etc.).
+See [docs/limitations.md](./docs/limitations.md) for details about traffic that cannot be proxied (app extensions, UDP/QUIC, etc.). WKWebView page loads are now covered on iOS 17+ through `WKWebsiteDataStore.proxyConfigurations`.
 
 ## Troubleshooting
 
