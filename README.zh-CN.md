@@ -40,6 +40,28 @@ make DEBUG=1
 ./scripts/setup.sh
 ```
 
+## 作为其他 dylib 的一部分使用
+
+可以把这个项目编成静态库，再链接进你自己的 tweak/dylib：
+
+```sh
+make static
+```
+
+产物：
+
+```
+libproxychains_livecontainer.a
+```
+
+链接到最终 dylib 时，需要额外链接：
+
+```sh
+-framework Foundation -Wl,-weak_framework,WebKit -Wl,-weak_framework,Network
+```
+
+并且使用相同的 `MONTEREY_HOOKING` 编译选项。dylib 加载时构造函数会自动初始化 proxychains，配置文件会相对于你的合并后的 dylib 路径搜索。
+
 ## 使用 GitHub Actions 构建
 
 仓库自带 `.github/workflows/build.yml`。推送 `v0.1.0` 这样的 tag 后，会在 macOS runner

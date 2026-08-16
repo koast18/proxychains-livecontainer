@@ -21,12 +21,14 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-path
 
-      - name: Build normal dylib
+      - name: Build normal dylib + static archive
         run: |
           make clean
           make ARCH=arm64 IOS_DEPLOYMENT_TARGET=15.0
+          make ARCH=arm64 IOS_DEPLOYMENT_TARGET=15.0 static
           mkdir -p artifacts
           cp libproxychains_livecontainer.dylib artifacts/
+          cp libproxychains_livecontainer.a artifacts/
 
       - name: Build debug dylib
         run: |
@@ -37,7 +39,7 @@ jobs:
       - name: Inspect artifacts
         run: |
           ls -lh artifacts/
-          file artifacts/libproxychains_livecontainer*.dylib
+          file artifacts/libproxychains_livecontainer*.dylib artifacts/libproxychains_livecontainer.a
           lipo -info artifacts/libproxychains_livecontainer*.dylib || true
 
       - name: Create release and upload assets
@@ -47,6 +49,7 @@ jobs:
           files: |
             artifacts/libproxychains_livecontainer.dylib
             artifacts/libproxychains_livecontainer_debug.dylib
+            artifacts/libproxychains_livecontainer.a
             proxychains.conf
           generate_release_notes: true
           fail_on_unmatched_files: true
@@ -59,4 +62,5 @@ jobs:
           path: |
             artifacts/libproxychains_livecontainer.dylib
             artifacts/libproxychains_livecontainer_debug.dylib
+            artifacts/libproxychains_livecontainer.a
             proxychains.conf

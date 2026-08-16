@@ -72,6 +72,28 @@ make DEBUG=1
 Debug output file: `libproxychains_livecontainer_debug.dylib`. GitHub Releases
 contain both the normal and debug dylibs.
 
+## Use as part of another dylib
+
+You can compile this project into your own tweak/dylib instead of loading the
+standalone dylib.
+
+Build the static archive:
+
+```sh
+make static
+```
+
+Then link `libproxychains_livecontainer.a` into your dylib. Make sure your final
+dylib also links:
+
+```sh
+-framework Foundation -Wl,-weak_framework,WebKit -Wl,-weak_framework,Network
+```
+
+and is compiled with the same `MONTEREY_HOOKING` flags. The constructor inside
+`libproxychains.c` will initialize proxychains automatically when your dylib is
+loaded. The config file will be searched relative to your combined dylib.
+
 ## Build with GitHub Actions
 
 This repository includes `.github/workflows/build.yml`. Pushing a tag like `v0.1.0`

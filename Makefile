@@ -16,6 +16,7 @@ IOS_DEPLOYMENT_TARGET ?= 15.0
 SDKROOT ?= $(shell xcrun --sdk iphoneos --show-sdk-path)
 CC ?= $(shell xcrun --sdk iphoneos --find clang)
 CODESIGN ?= codesign
+AR ?= ar
 
 VENDOR := vendor/proxychains-ng
 SRC := $(VENDOR)/src
@@ -31,6 +32,7 @@ PRODUCT := libproxychains_livecontainer.dylib
 endif
 
 CONFIG  := proxychains.conf
+STATIC_LIB := libproxychains_livecontainer.a
 
 OBJS := \
 	$(FISHHOOK_DIR)/fishhook.o \
@@ -64,9 +66,13 @@ LDFLAGS := -dynamiclib -arch $(ARCH) -isysroot $(SDKROOT) \
 	-framework Foundation -Wl,-weak_framework,WebKit -Wl,-weak_framework,Network
 
 all: $(PRODUCT) sign
+static: $(STATIC_LIB)
 
 $(PRODUCT): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^
+
+$(STATIC_LIB): $(OBJS)
+	$(AR) rcs $@ $^
 
 $(WEBKIT_PROXY_OBJ): $(WEBKIT_PROXY_SRC)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fno-objc-arc -c -o $@ $<
@@ -83,7 +89,7 @@ sign: $(PRODUCT)
 	$(CODESIGN) --force --sign - $(PRODUCT)
 
 clean:
-	rm -f $(PRODUCT) $(OBJS) $(FISHHOOK_DIR)/fishhook.o $(WEBKIT_PROXY_OBJ)
+	rm -f $(PRODUCT) $(STATIC_LIB) $(OBJS) $(FISHHOOK_DIR)/fishhook.o $(WEBKIT_PROXY_OBJ)
 
 install: all
 	install -d $(DESTDIR)/Library/MobileSubstrate/DynamicLibraries $(DESTDIR)/usr/lib
@@ -91,4 +97,4 @@ install: all
 	install -m 755 $(PRODUCT) $(DESTDIR)/usr/lib/$(PRODUCT)
 	install -m 644 $(CONFIG) $(DESTDIR)/etc/proxychains.conf
 
-.PHONY: all sign clean install
+.PHONY: all static sign clean install
