@@ -10,6 +10,8 @@
 
 #include "../vendor/proxychains-ng/src/common.h"
 
+extern void proxychains_write_log(char *str, ...);
+
 static nw_proxy_config_t g_lc_proxy_config;
 
 static int lc_parse_proxy(char *host, size_t hostlen,
@@ -141,8 +143,14 @@ void livecontainer_install_webkit_proxy(void) {
     Method m;
     id (*msg)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
 
+    if (!lc_create_proxy_config()) {
+        proxychains_write_log("[proxychains] webkit proxy: no usable HTTP proxy found, WKWebView proxy disabled\n");
+        return;
+    }
+
     wds = NSClassFromString(@"WKWebsiteDataStore");
     if (wds) {
+        proxychains_write_log("[proxychains] webkit proxy: applying HTTP proxy to WKWebsiteDataStore\n");
         id defaultStore = msg(wds, sel_registerName("defaultDataStore"));
         lc_apply_proxy_to_store(defaultStore);
 
@@ -152,6 +160,9 @@ void livecontainer_install_webkit_proxy(void) {
             method_setImplementation(m, (IMP)lc_nonPersistentDataStore);
         }
     }
+
+    if (!wds)
+        proxychains_write_log("[proxychains] webkit proxy: WKWebsiteDataStore unavailable\n");
 
     cfg = NSClassFromString(@"WKWebViewConfiguration");
     if (cfg) {
