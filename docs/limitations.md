@@ -55,6 +55,22 @@ the WebContent process.
 | Local-network exclusions | Config `localnet` entries are intentionally sent direct |
 | Private/self-contained network stacks | Apps embedding their own TCP/IP stack or using unusual APIs may not call hooked libSystem symbols |
 
+## Bypass surface and current countermeasures
+
+| Potential bypass | How it can happen | Current status / solution |
+|---|---|---|
+| WKWebView page loads | WebContent process | Solved on iOS 17+ via `WKWebsiteDataStore.proxyConfigurations` |
+| Private/custom WKWebsiteDataStore paths | App creates stores through non-default/non-persistent methods not swizzled | Partially solved; can add more swizzles (`dataStoreForIdentifier:`, `_WKWebsiteDataStoreConfiguration`) if needed |
+| UDP / QUIC / HTTP3 | App uses UDP-based transports, not TCP CONNECT | Not proxied by current HTTP CONNECT config; use HTTP/3 relay proxy config or VPN |
+| Direct `syscall(SYS_connect)` / `SYS_connectx` | App bypasses libSystem wrappers | Not currently hooked; can add `syscall()`/`syscall_async` hooks in a future version |
+| `connectx()` with non-NULL `pcid`/`connid`/`ext` | Network.framework / NWConnection paths | Currently passed through; can be improved by applying proxy at NWConnection level or using `nw_proxy_config` more broadly |
+| App Extensions | Share/Action/Today/Widget run in separate processes | Not covered; requires per-process injection or VPN |
+| XPC / helper processes | App spawns or talks to XPC services | Not covered; requires per-process injection or VPN |
+| Background `NSURLSession` tasks | Handled by `nsurlsessiond` outside the app process | Not covered; needs VPN/system-level proxy |
+| Already-established sockets | Opened before dylib injection | Not migrated; restart the app after enabling the dylib |
+| Local network / localhost | Config `localnet` bypass | Intentional; remove localnet entries if you want those proxied too |
+| Private/embedded network stacks | App implements its own TCP/IP in userspace | Cannot be hooked at libSystem level; use VPN/network-level redirection |
+
 ## Recommendations
 
 - To verify the dylib works, use an app/feature whose network requests are made
