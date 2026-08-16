@@ -25,25 +25,28 @@ jobs:
         run: |
           make clean
           make ARCH=arm64 IOS_DEPLOYMENT_TARGET=15.0
+          mkdir -p artifacts
+          cp libproxychains_livecontainer.dylib artifacts/
 
       - name: Build debug dylib
         run: |
           make clean
           make ARCH=arm64 IOS_DEPLOYMENT_TARGET=15.0 DEBUG=1
+          cp libproxychains_livecontainer_debug.dylib artifacts/
 
       - name: Inspect artifacts
         run: |
-          ls -lh libproxychains_livecontainer*.dylib
-          file libproxychains_livecontainer*.dylib
-          lipo -info libproxychains_livecontainer*.dylib || true
+          ls -lh artifacts/
+          file artifacts/libproxychains_livecontainer*.dylib
+          lipo -info artifacts/libproxychains_livecontainer*.dylib || true
 
       - name: Create release and upload assets
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            libproxychains_livecontainer.dylib
-            libproxychains_livecontainer_debug.dylib
+            artifacts/libproxychains_livecontainer.dylib
+            artifacts/libproxychains_livecontainer_debug.dylib
             proxychains.conf
           generate_release_notes: true
           fail_on_unmatched_files: true
@@ -54,6 +57,6 @@ jobs:
         with:
           name: libproxychains_livecontainer-dylibs
           path: |
-            libproxychains_livecontainer.dylib
-            libproxychains_livecontainer_debug.dylib
+            artifacts/libproxychains_livecontainer.dylib
+            artifacts/libproxychains_livecontainer_debug.dylib
             proxychains.conf
