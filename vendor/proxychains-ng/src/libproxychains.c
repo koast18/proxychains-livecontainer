@@ -113,6 +113,7 @@ const char *proxychains_get_version(void);
 
 static void setup_hooks(void);
 static void setup_runtime_hooks(void);
+extern void livecontainer_install_webkit_proxy(void);
 
 typedef struct {
 	unsigned int first, last, flags;
@@ -154,6 +155,7 @@ static void do_init(void) {
 
 	setup_hooks();
 	setup_runtime_hooks();
+	livecontainer_install_webkit_proxy();
 
 	/* read the config file */
 	get_chain_data(proxychains_pd, &proxychains_proxy_count, &proxychains_ct);
