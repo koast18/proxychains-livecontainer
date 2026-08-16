@@ -21,7 +21,13 @@ VENDOR := vendor/proxychains-ng
 SRC := $(VENDOR)/src
 FISHHOOK_DIR := fishhook
 
+DEBUG ?= 0
+ifeq ($(DEBUG),1)
+PRODUCT := libproxychains_livecontainer_debug.dylib
+else
 PRODUCT := libproxychains_livecontainer.dylib
+endif
+
 CONFIG  := proxychains.conf
 
 OBJS := \
@@ -39,6 +45,10 @@ OBJS := \
 CPPFLAGS := -D_GNU_SOURCE -D_DARWIN_C_SOURCE -DIS_MAC=1 -DMONTEREY_HOOKING -DSUPER_SECURE \
 	-DGN_NODELEN_T=socklen_t -DGN_SERVLEN_T=socklen_t -DGN_FLAGS_T=int \
 	-DHAVE_CLOCK_GETTIME
+
+ifeq ($(DEBUG),1)
+CPPFLAGS += -DDEBUG
+endif
 
 CFLAGS := -std=c99 -Wall -O2 -fPIC \
 	-Ifishhook -isysroot $(SDKROOT) -arch $(ARCH) -miphoneos-version-min=$(IOS_DEPLOYMENT_TARGET)

@@ -205,6 +205,21 @@ diff -ruN '--exclude=.git' ../proxychains-ng/src/core.h vendor/proxychains-ng/sr
  extern gethostbyname_t true_gethostbyname;
  extern getaddrinfo_t true_getaddrinfo;
  extern freeaddrinfo_t true_freeaddrinfo;
+diff -ruN '--exclude=.git' ../proxychains-ng/src/debug.h vendor/proxychains-ng/src/debug.h
+--- a/src/debug.h	2026-08-16 20:47:12.806414600 +0800
++++ b/src/debug.h	2026-08-16 22:26:46.963835100 +0800
+@@ -3,8 +3,10 @@
+ 
+ # include <stdio.h>
+ 
++void proxychains_write_log(char *str, ...);
++
+ #ifdef DEBUG
+-# define PSTDERR(fmt, args...) do { dprintf(2,fmt, ## args); } while(0)
++# define PSTDERR(fmt, args...) proxychains_write_log(fmt, ## args)
+ # define PDEBUG(fmt, args...) PSTDERR("DEBUG:pid[%d]:" fmt, getpid(), ## args)
+ # define DEBUGDECL(args...) args
+ # define DUMP_PROXY_CHAIN(A, B) dump_proxy_chain(A, B)
 diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxychains-ng/src/libproxychains.c
 --- a/src/libproxychains.c	2026-08-16 20:48:08.254024800 +0800
 +++ b/src/libproxychains.c	2026-08-16 22:20:53.382931200 +0800

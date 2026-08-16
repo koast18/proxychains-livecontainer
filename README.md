@@ -60,6 +60,16 @@ the dylib. To override:
 make ARCH=arm64 IOS_DEPLOYMENT_TARGET=15.0
 ```
 
+To build the verbose debug dylib (writes much more detail to the log file):
+
+```sh
+make clean
+make DEBUG=1
+```
+
+Debug output file: `libproxychains_livecontainer_debug.dylib`. GitHub Releases
+contain both the normal and debug dylibs.
+
 ## Build with GitHub Actions
 
 This repository includes `.github/workflows/build.yml`. Pushing a tag like `v0.1.0`

@@ -25,6 +25,15 @@ make
 
 产物：`libproxychains_livecontainer.dylib`（默认 arm64，ad-hoc 签名）。
 
+如果需要更详细的 debug 日志，可以构建 debug 版：
+
+```sh
+make clean
+make DEBUG=1
+```
+
+产物为 `libproxychains_livecontainer_debug.dylib`。GitHub Release 里会同时提供普通版和 debug 版。
+
 如需重新拉取上游 v4.17 并重新应用补丁：
 
 ```sh

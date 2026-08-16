@@ -3,8 +3,10 @@
 
 # include <stdio.h>
 
+void proxychains_write_log(char *str, ...);
+
 #ifdef DEBUG
-# define PSTDERR(fmt, args...) do { dprintf(2,fmt, ## args); } while(0)
+# define PSTDERR(fmt, args...) proxychains_write_log(fmt, ## args)
 # define PDEBUG(fmt, args...) PSTDERR("DEBUG:pid[%d]:" fmt, getpid(), ## args)
 # define DEBUGDECL(args...) args
 # define DUMP_PROXY_CHAIN(A, B) dump_proxy_chain(A, B)
