@@ -1,0 +1,367 @@
+diff -ruN '--exclude=.git' ../proxychains-ng/src/common.c vendor/proxychains-ng/src/common.c
+--- a/src/common.c	2026-08-16 20:47:12.798400000 +0800
++++ b/src/common.c	2026-08-16 21:08:54.571116300 +0800
+@@ -2,6 +2,8 @@
+ #include <stdlib.h>
+ #include <unistd.h>
+ #include <stdio.h>
++#include <string.h>
++#include <dlfcn.h>
+ 
+ const char *proxy_type_strmap[] = {
+     "http",
+@@ -82,6 +84,7 @@
+ 
+ char *get_config_path(char* default_path, char* pbuf, size_t bufsize) {
+ 	char buf[512];
++	const char *home;
+ 	// top priority: user defined path
+ 	char *path = default_path;
+ 	if(check_path(path))
+@@ -94,24 +97,57 @@
+ 
+ 	// priority 2; proxychains conf in actual dir
+ 	path = getcwd(buf, sizeof(buf));
+-	snprintf(pbuf, bufsize, "%s/%s", path, PROXYCHAINS_CONF_FILE);
+-	path = pbuf;
+-	if(check_path(path))
+-		goto have;
++	if(path) {
++		snprintf(pbuf, bufsize, "%s/%s", path, PROXYCHAINS_CONF_FILE);
++		path = pbuf;
++		if(check_path(path))
++			goto have;
++	}
+ 
+-	// priority 3; $HOME/.proxychains/proxychains.conf
+-	path = getenv("HOME");
+-	snprintf(pbuf, bufsize, "%s/.proxychains/%s", path, PROXYCHAINS_CONF_FILE);
+-	path = pbuf;
+-	if(check_path(path))
+-		goto have;
+-    
+-    // priority 3b: ~/config/settings/proxychains.conf (for haiku)
+-	path = getenv("HOME");
+-	snprintf(pbuf, bufsize, "%s/config/settings/%s", path, PROXYCHAINS_CONF_FILE);
+-	path = pbuf;
+-	if(check_path(path))
+-		goto have;
++	home = getenv("HOME");
++	if(home) {
++		// priority 3; $HOME/.proxychains/proxychains.conf
++		snprintf(pbuf, bufsize, "%s/.proxychains/%s", home, PROXYCHAINS_CONF_FILE);
++		path = pbuf;
++		if(check_path(path))
++			goto have;
++
++		// priority 3b: ~/config/settings/proxychains.conf (for haiku)
++		snprintf(pbuf, bufsize, "%s/config/settings/%s", home, PROXYCHAINS_CONF_FILE);
++		path = pbuf;
++		if(check_path(path))
++			goto have;
++
++		// priority 3c: LiveContainer / sandbox Documents
++		snprintf(pbuf, bufsize, "%s/Documents/%s", home, PROXYCHAINS_CONF_FILE);
++		path = pbuf;
++		if(check_path(path))
++			goto have;
++
++		// priority 3d: LiveContainer / sandbox Library/Preferences
++		snprintf(pbuf, bufsize, "%s/Library/Preferences/%s", home, PROXYCHAINS_CONF_FILE);
++		path = pbuf;
++		if(check_path(path))
++			goto have;
++	}
++
++	// priority 3e: next to this dylib
++	{
++		Dl_info dli;
++		if(dladdr((void*)&get_config_path, &dli) && dli.dli_fname && dli.dli_fname[0]) {
++			snprintf(pbuf, bufsize, "%s", dli.dli_fname);
++			char *slash = strrchr(pbuf, '/');
++			if(slash) {
++				size_t dir_len = (size_t)(slash - pbuf);
++				if(dir_len + sizeof("/" PROXYCHAINS_CONF_FILE) <= bufsize) {
++					strcpy(slash + 1, PROXYCHAINS_CONF_FILE);
++					path = pbuf;
++					if(check_path(path))
++						goto have;
++				}
++			}
++		}
++	}
+ 
+ 	// priority 4: $SYSCONFDIR/proxychains.conf
+ 	path = SYSCONFDIR "/" PROXYCHAINS_CONF_FILE;
+@@ -123,9 +159,6 @@
+ 	if(check_path(path))
+ 		goto have;
+ 
+-	perror("couldnt find configuration file");
+-	exit(1);
+-
+ 	return NULL;
+ 	have:
+ 	return path;
+diff -ruN '--exclude=.git' ../proxychains-ng/src/core.h vendor/proxychains-ng/src/core.h
+--- a/src/core.h	2026-08-16 20:48:08.252050200 +0800
++++ b/src/core.h	2026-08-16 21:07:48.004979600 +0800
+@@ -102,6 +102,8 @@
+ typedef int (*close_t)(int);
+ typedef int (*close_range_t)(unsigned, unsigned, int);
+ typedef int (*connect_t)(int, const struct sockaddr *, socklen_t);
++struct ifnet_interface_info;
++typedef int (*connectx_t)(int, const struct sockaddr *, unsigned int, uint32_t, uint32_t *, unsigned int, const struct ifnet_interface_info *, uint32_t *);
+ typedef struct hostent* (*gethostbyname_t)(const char *);
+ typedef int (*freeaddrinfo_t)(struct addrinfo *);
+ typedef struct hostent *(*gethostbyaddr_t) (const void *, socklen_t, int);
+@@ -118,6 +120,7 @@
+ 
+ 
+ extern connect_t true_connect;
++extern connectx_t true_connectx;
+ extern gethostbyname_t true_gethostbyname;
+ extern getaddrinfo_t true_getaddrinfo;
+ extern freeaddrinfo_t true_freeaddrinfo;
+diff -ruN '--exclude=.git' ../proxychains-ng/src/libproxychains.c vendor/proxychains-ng/src/libproxychains.c
+--- a/src/libproxychains.c	2026-08-16 20:48:08.254024800 +0800
++++ b/src/libproxychains.c	2026-08-16 21:15:45.229611800 +0800
+@@ -58,6 +58,7 @@
+ close_t true_close;
+ close_range_t true_close_range;
+ connect_t true_connect;
++connectx_t true_connectx;
+ gethostbyname_t true_gethostbyname;
+ getaddrinfo_t true_getaddrinfo;
+ freeaddrinfo_t true_freeaddrinfo;
+@@ -307,10 +308,9 @@
+ 	*ct = DYNAMIC_TYPE;
+ 
+ 	env = get_config_path(getenv(PROXYCHAINS_CONF_FILE_ENV_VAR), buf, sizeof(buf));
+-	if( ( file = fopen(env, "r") ) == NULL )
+-	{
+-	        perror("couldnt read configuration file");
+-        	exit(1);
++	if(!env || (file = fopen(env, "r")) == NULL) {
++		proxychains_write_log(LOG_PREFIX "couldnt find configuration file, proxychains disabled\n");
++		goto no_proxy;
+ 	}
+ 
+ 	while(fgets(buf, sizeof(buf), file)) {
+@@ -339,7 +339,7 @@
+ 					if(!proxy_from_string(buff, type, host, &port_n, pd[count].user, pd[count].pass)) {
+ 						inv:
+ 						fprintf(stderr, "error: invalid item in proxylist section: %s", buff);
+-						exit(1);
++						goto no_proxy;
+ 					}
+ 				}
+ 
+@@ -361,7 +361,7 @@
+ 						fprintf(stderr, "proxy %s has invalid value or is not numeric\n", host);
+ 						fprintf(stderr, "non-numeric ips are only allowed under the following circumstances:\n");
+ 						fprintf(stderr, "chaintype == strict (%s), proxy is not first in list (%s), proxy_dns active (%s)\n\n", bool_str(*ct == STRICT_TYPE), bool_str(count > 0), rdns_resolver_string(proxychains_resolver));
+-						exit(1);
++						goto no_proxy;
+ 					}
+ 				}
+ 
+@@ -398,7 +398,7 @@
+ 					if(remote_dns_subnet >= 256) {
+ 						fprintf(stderr,
+ 							"remote_dns_subnet: invalid value. requires a number between 0 and 255.\n");
+-						exit(1);
++						goto no_proxy;
+ 					}
+ 				} else if(STR_STARTSWITH(buff, "localnet")) {
+ 					char colon, extra, right_bracket[2];
+@@ -406,7 +406,7 @@
+ 					int local_family, n, valid;
+ 					if(sscanf(buff, "%s %53[^/]/%15s%c", user, local_addr_port, local_netmask, &extra) != 3) {
+ 						fprintf(stderr, "localnet format error");
+-						exit(1);
++						goto no_proxy;
+ 					}
+ 					p = strchr(local_addr_port, ':');
+ 					if(!p || p == strrchr(local_addr_port, ':')) {
+@@ -423,7 +423,7 @@
+ 					}
+ 					if(!valid) {
+ 						fprintf(stderr, "localnet address or port error\n");
+-						exit(1);
++						goto no_proxy;
+ 					}
+ 					if(local_port) {
+ 						PDEBUG("added localnet: netaddr=%s, port=%u, netmask=%s\n",
+@@ -447,7 +447,7 @@
+ 						}
+ 						if(!valid) {
+ 							fprintf(stderr, "localnet address error\n");
+-							exit(1);
++							goto no_proxy;
+ 						}
+ 						if(local_family == AF_INET && strchr(local_netmask, '.')) {
+ 							valid =
+@@ -469,7 +469,7 @@
+ 						}
+ 						if(!valid) {
+ 							fprintf(stderr, "localnet netmask error\n");
+-							exit(1);
++							goto no_proxy;
+ 						}
+ 						++num_localnet_addr;
+ 					} else {
+@@ -481,7 +481,7 @@
+ 					pc = strchr(buff, '=');
+ 					if(!pc) {
+ 						fprintf(stderr, "error: missing equals sign '=' in chain_len directive.\n");
+-						exit(1);
++						goto no_proxy;
+ 					}
+ 					len = atoi(++pc);
+ 					proxychains_max_chain = (len ? len : 1);
+@@ -496,13 +496,13 @@
+ 
+ 					if(sscanf(buff, "%s %15[^:]:%5s", user, rdnsd_addr, rdnsd_port) < 3) {
+ 						fprintf(stderr, "proxy_dns_daemon format error\n");
+-						exit(1);
++						goto no_proxy;
+ 					}
+ 					rdns_server_buffer.sin_family = AF_INET;
+ 					int error = inet_pton(AF_INET, rdnsd_addr, &rdns_server_buffer.sin_addr);
+ 					if(error <= 0) {
+ 						fprintf(stderr, "bogus proxy_dns_daemon address\n");
+-						exit(1);
++						goto no_proxy;
+ 					}
+ 					rdns_server_buffer.sin_port = htons(atoi(rdnsd_port));
+ 					proxychains_resolver = DNSLF_RDNS_DAEMON;
+@@ -510,7 +510,7 @@
+ 				} else if(STR_STARTSWITH(buff, "dnat")) {
+ 					if(sscanf(buff, "%s %21[^ ] %21s\n", user, dnat_orig_addr_port, dnat_new_addr_port) < 3) {
+ 						fprintf(stderr, "dnat format error");
+-						exit(1);
++						goto no_proxy;
+ 					}
+ 					/* clean previously used buffer */
+ 					memset(dnat_orig_port, 0, sizeof(dnat_orig_port) / sizeof(dnat_orig_port[0]));
+@@ -526,7 +526,7 @@
+ 							      &dnats[num_dnats].orig_dst);
+ 						if(error <= 0) {
+ 							fprintf(stderr, "dnat original destination address error\n");
+-							exit(1);
++							goto no_proxy;
+ 						}
+ 
+ 						error =
+@@ -534,7 +534,7 @@
+ 							      &dnats[num_dnats].new_dst);
+ 						if(error <= 0) {
+ 							fprintf(stderr, "dnat effective destination address error\n");
+-							exit(1);
++							goto no_proxy;
+ 						}
+ 
+ 						if(dnat_orig_port[0]) {
+@@ -562,14 +562,24 @@
+ 	}
+ #ifndef BROKEN_FCLOSE
+ 	fclose(file);
++	file = NULL;
+ #endif
+ 	if(!count) {
+ 		fprintf(stderr, "error: no valid proxy found in config\n");
+-		exit(1);
++		goto no_proxy;
+ 	}
+ 	*proxy_count = count;
+ 	proxychains_got_chain_data = 1;
+ 	PDEBUG("proxy_dns: %s\n", rdns_resolver_string(proxychains_resolver));
++	return;
++
++no_proxy:
++	if(file)
++		fclose(file);
++	*proxy_count = 0;
++	proxychains_got_chain_data = 1;
++	proxychains_resolver = DNSLF_LIBC;
++	proxychains_write_log(LOG_PREFIX "no usable proxy config, proxychains disabled\n");
+ }
+ 
+ /*******  HOOK FUNCTIONS  *******/
+@@ -670,6 +680,9 @@
+ 	INIT();
+ 	PFUNC();
+ 
++	if(!proxychains_proxy_count)
++		return true_connect(sock, addr, len);
++
+ 	int socktype = 0, flags = 0, ret = 0;
+ 	socklen_t optlen = 0;
+ 	ip_type dest_ip;
+@@ -766,6 +779,26 @@
+ 	return ret;
+ }
+ 
++#ifdef MONTEREY_HOOKING
++/* Apple's Network.framework / NSURLSession can use connectx() instead of
++ * connect().  The ABI-compatible prototype below matches the Darwin
++ * connectx() syscall wrapper.  We only intercept plain stream connects and
++ * route them through the same proxychains core. */
++HOOKFUNC(int, connectx, int sock, const struct sockaddr *endpoints, unsigned int sa_len,
++         uint32_t associd, uint32_t *cid, unsigned int flags,
++         const struct ifnet_interface_info *ifinfo, uint32_t *connid) {
++	INIT();
++	(void)associd;
++	(void)cid;
++	(void)ifinfo;
++	(void)connid;
++	if(!proxychains_proxy_count || !endpoints || sa_len < sizeof(struct sockaddr) ||
++	   flags != 0 || cid != NULL || connid != NULL)
++		return true_connectx(sock, endpoints, sa_len, associd, cid, flags, ifinfo, connid);
++	return pxcng_connect(sock, endpoints, sa_len);
++}
++#endif
++
+ #ifdef IS_SOLARIS
+ HOOKFUNC(int, __xnet_connect, int sock, const struct sockaddr *addr, unsigned int len)
+ 	return connect(sock, addr, len);
+@@ -913,6 +946,9 @@
+ 
+ static void setup_hooks(void) {
+ 	SETUP_SYM(connect);
++#ifdef MONTEREY_HOOKING
++	SETUP_SYM(connectx);
++#endif
+ 	SETUP_SYM(sendto);
+ 	SETUP_SYM(gethostbyname);
+ 	SETUP_SYM(getaddrinfo);
+@@ -934,6 +970,9 @@
+ #define DYLD_HOOK(F) DYLD_INTERPOSE(pxcng_ ## F, F)
+ 
+ DYLD_HOOK(connect);
++#ifdef MONTEREY_HOOKING
++DYLD_HOOK(connectx);
++#endif
+ DYLD_HOOK(sendto);
+ DYLD_HOOK(gethostbyname);
+ DYLD_HOOK(getaddrinfo);
+diff -ruN '--exclude=.git' ../proxychains-ng/src/main.c vendor/proxychains-ng/src/main.c
+--- a/src/main.c	2026-08-16 20:47:12.809399400 +0800
++++ b/src/main.c	2026-08-16 21:00:36.007994000 +0800
+@@ -100,6 +100,10 @@
+ 
+ 	/* check if path of config file has not been passed via command line */
+ 	path = get_config_path(path, pbuf, sizeof(pbuf));
++	if(!path) {
++		fprintf(stderr, LOG_PREFIX "couldn't find configuration file\n");
++		return 1;
++	}
+ 
+ 	if(!quiet)
+ 		fprintf(stderr, LOG_PREFIX "config file found: %s\n", path);
+diff -ruN '--exclude=.git' ../proxychains-ng/src/version.h vendor/proxychains-ng/src/version.h
+--- a/src/version.h	1970-01-01 08:00:00.000000000 +0800
++++ b/src/version.h	2026-08-16 21:01:46.742622900 +0800
+@@ -0,0 +1 @@
++#define VERSION "4.17-livecontainer"
