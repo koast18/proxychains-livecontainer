@@ -76,6 +76,10 @@ http 192.168.1.10 8080
 
 4. 重启 LiveContainer / 宿主 App。
 
+## 已知限制
+
+参见 [docs/limitations.md](./docs/limitations.md)：WKWebView 网页加载、App Extension、UDP/QUIC、带连接 ID 的 connectx 等无法被当前 dylib 代理。
+
 ## 诊断
 
 dylib 会把日志写入：

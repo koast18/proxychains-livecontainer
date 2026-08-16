@@ -141,6 +141,10 @@ unmodified instead of crashing the app.
 - DNS hooks (`proxy_dns`) can optionally return internal IPs and send the real
   hostname to the proxy, avoiding local DNS leaks.
 
+## Known limitations
+
+See [docs/limitations.md](./docs/limitations.md) for details about traffic that cannot be proxied (WKWebView, app extensions, UDP/QUIC, etc.).
+
 ## Troubleshooting
 
 The dylib writes diagnostics to a log file. By default it uses:
